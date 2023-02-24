@@ -2,66 +2,25 @@ import toast, { Toaster } from "react-hot-toast";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrash, faUpload } from "@fortawesome/free-solid-svg-icons";
 import React, { useMemo, useState } from "react";
+import {
+  getTodos,
+  addTodo,
+  deleteTodo,
+  updateTodo,
+  todosUrlEndpoint as cacheKey,
+  TodoInterface,
+} from "../../api/todosApi";
 import useSWR, { Fetcher, Key } from "swr";
-import axios from "axios";
-
-const todosApi = axios.create({
-  baseURL: "http://localhost:4000",
-});
-
-export interface TodoInterface<T = any> {
-  userId: number;
-  title: string;
-  completed: boolean;
-  id: T;
-}
-
-export const todosUrlEndpoint = "/todos";
-
-export const getTodos = async <T = any,>(
-  url: string
-): Promise<TodoInterface<T>[]> => {
-  const response = await todosApi.get(url);
-  return response.data;
-};
-
-export const addTodo = async <T = any,>({
-  userId,
-  title,
-  completed,
-  id,
-}: TodoInterface<T>): Promise<TodoInterface<T>> => {
-  const response = await todosApi.post(todosUrlEndpoint, {
-    userId,
-    title,
-    completed,
-    id,
-  });
-  return response.data;
-};
-
-export const addTodoOptions = <T,>(newTodo: TodoInterface<T>) => {
-  return {
-    optimisticData: (todos: TodoInterface<T>[]) =>
-      [...todos, newTodo].sort(
-        (a, b) => parseInt(b.id as any) - parseInt(a.id as any)
-      ),
-    rollbackOnError: true,
-    populateCache: (added: TodoInterface<T>, todos: TodoInterface<T>[]) =>
-      [...todos, added].sort(
-        (a, b) => parseInt(b.id as any) - parseInt(a.id as any)
-      ),
-    revalidate: false,
-  };
-};
 
 const TodoList = () => {
   const [newTodo, setNewTodo] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
 
-  const key: Key = `${todosUrlEndpoint}`;
+  const key: Key = `${cacheKey}`;
 
-  const fetcher: Fetcher<TodoInterface[]> = (url: string): any => {
+  const fetcher: Fetcher<any, string> = (
+    url: string
+  ): Promise<TodoInterface[]> => {
     return getTodos(url);
   };
   const {
@@ -71,33 +30,26 @@ const TodoList = () => {
     mutate,
   } = useSWR(key, fetcher, {
     onSuccess: (data: TodoInterface[]) =>
-      data.sort(
-        (a, b): number => parseInt(b.id as any) - parseInt(a.id as any)
-      ),
+      data.sort((a, b): number => parseInt(b.id) - parseInt(a.id)),
   });
-
-  // const addTodoMutation = async (newTodo: TodoInterface) => {
-  //   try {
-  //     await mutate(await addTodo(newTodo), addTodoOptions(newTodo));
-  //     toast.success("Success! Added new item.", {
-  //       duration: 1000,
-  //       icon: "🎉",
-  //     });
-  //   } catch (err) {
-  //     toast.error("Failed to add the new item.", {
-  //       duration: 1000,
-  //     });
-  //   }
-  // };
 
   const addTodoMutation = async (newTodo: TodoInterface) => {
     try {
-      await mutate(async (todos: TodoInterface[] = []) => {
-        const addedTodo = await addTodo(newTodo);
-        return [...todos, addedTodo].sort(
-          (a, b) => parseInt(b.id as any) - parseInt(a.id as any)
-        );
-      }, false);
+      // call API & mutate here
+
+      await mutate(addTodo(newTodo), {
+        // optimistic data displays until we populate cache
+        // param is previous data
+        optimisticData: (todos: TodoInterface[]) => {
+          return [...todos, newTodo].sort(
+            (a, b) => parseInt(b.id) - parseInt(a.id)
+          );
+        },
+        rollbackOnError: true,
+        populateCache: (added: TodoInterface, todos: TodoInterface[]) =>
+          [...todos, added].sort((a, b) => parseInt(b.id) - parseInt(a.id)),
+        revalidate: false,
+      });
       toast.success("Success! Added new item.", {
         duration: 1000,
         icon: "🎉",
@@ -109,7 +61,7 @@ const TodoList = () => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTodo) return;
     addTodoMutation({
@@ -145,7 +97,7 @@ const TodoList = () => {
   } else if (error) {
     content = <p>{error.message}</p>;
   } else {
-    content = todos?.map((todo: TodoInterface, index: number) => {
+    content = todos.map((todo: TodoInterface, index: number) => {
       return (
         <article key={todo.id}>
           <div className="todo">
@@ -161,11 +113,11 @@ const TodoList = () => {
     });
   }
 
-  const TodosLength = useMemo(() => {
+  const todoLength = useMemo(() => {
     return todos?.length;
-  }, [todos]);
+  }, []);
 
-  console.log("TodosLength", TodosLength);
+  console.log("todoLength", todoLength);
 
   return (
     <main>
