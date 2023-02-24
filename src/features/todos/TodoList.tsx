@@ -2,33 +2,68 @@ import toast, { Toaster } from "react-hot-toast";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrash, faUpload } from "@fortawesome/free-solid-svg-icons";
 import React, { useMemo, useState } from "react";
-import {
-  getTodos,
-  addTodo,
-  deleteTodo,
-  updateTodo,
-  todosUrlEndpoint as cacheKey,
-  TodoInterface,
-} from "../../api/todosApi";
 import useSWR, { Fetcher, Key } from "swr";
+import axios from "axios";
 
-import {
-  // addMutation as AddTodo,
-  addTodoOptions,
-  deleteTodoOptions,
-  updateTodoOptions,
-} from "../../helpers/todosMutation";
+const todosApi = axios.create({
+  baseURL: "http://localhost:4000",
+});
+
+export interface TodoInterface<T = any> {
+  userId: number;
+  title: string;
+  completed: boolean;
+  id: T;
+}
+
+export const todosUrlEndpoint = "/todos";
+
+export const getTodos = async <T = any,>(
+  url: string
+): Promise<TodoInterface<T>[]> => {
+  const response = await todosApi.get(url);
+  return response.data;
+};
+
+export const addTodo = async <T = any,>({
+  userId,
+  title,
+  completed,
+  id,
+}: TodoInterface<T>): Promise<TodoInterface<T>> => {
+  const response = await todosApi.post(todosUrlEndpoint, {
+    userId,
+    title,
+    completed,
+    id,
+  });
+  return response.data;
+};
+
+export const addTodoOptions = <T,>(newTodo: TodoInterface<T>) => {
+  return {
+    optimisticData: (todos: TodoInterface<T>[]) =>
+      [...todos, newTodo].sort(
+        (a, b) => parseInt(b.id as any) - parseInt(a.id as any)
+      ),
+    rollbackOnError: true,
+    populateCache: (added: TodoInterface<T>, todos: TodoInterface<T>[]) =>
+      [...todos, added].sort(
+        (a, b) => parseInt(b.id as any) - parseInt(a.id as any)
+      ),
+    revalidate: false,
+  };
+};
 
 const TodoList = () => {
   const [newTodo, setNewTodo] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
 
-  const key: Key = `${cacheKey}?_page=${currentPage}&_limit=10`;
+  const key: Key = `${todosUrlEndpoint}`;
 
-  const fetcher: Fetcher<any> = (url: string): Promise<TodoInterface[]> => {
+  const fetcher: Fetcher<TodoInterface[]> = (url: string): any => {
     return getTodos(url);
   };
-
   const {
     data: todos,
     error,
@@ -36,23 +71,33 @@ const TodoList = () => {
     mutate,
   } = useSWR(key, fetcher, {
     onSuccess: (data: TodoInterface[]) =>
-      data.sort((a, b): number => parseInt(b.id) - parseInt(a.id)),
+      data.sort(
+        (a, b): number => parseInt(b.id as any) - parseInt(a.id as any)
+      ),
   });
 
-  const handleChangePage = (event: unknown, newPage: number) => {
-    setCurrentPage(newPage);
-  };
-
-  const PageSize = 10;
-
-  // Add useSWR here
+  // const addTodoMutation = async (newTodo: TodoInterface) => {
+  //   try {
+  //     await mutate(await addTodo(newTodo), addTodoOptions(newTodo));
+  //     toast.success("Success! Added new item.", {
+  //       duration: 1000,
+  //       icon: "🎉",
+  //     });
+  //   } catch (err) {
+  //     toast.error("Failed to add the new item.", {
+  //       duration: 1000,
+  //     });
+  //   }
+  // };
 
   const addTodoMutation = async (newTodo: TodoInterface) => {
     try {
-      // call API & mutate here
-      // await mutate(addTodo(newTodo), addTodoOptions(newTodo));
-      await mutate([addTodo(newTodo)], addTodoOptions(newTodo));
-
+      await mutate(async (todos: TodoInterface[] = []) => {
+        const addedTodo = await addTodo(newTodo);
+        return [...todos, addedTodo].sort(
+          (a, b) => parseInt(b.id as any) - parseInt(a.id as any)
+        );
+      }, false);
       toast.success("Success! Added new item.", {
         duration: 1000,
         icon: "🎉",
@@ -64,38 +109,7 @@ const TodoList = () => {
     }
   };
 
-  const updateTodoMutation = async (updatedTodo: TodoInterface) => {
-    try {
-      // call API & mutate here
-      // await updateTodo(updatedTodo)
-      // mutate()
-      await mutate(updateTodo(updatedTodo), updateTodoOptions(updatedTodo));
-      toast.success("Success! Updated item.", {
-        duration: 1000,
-        icon: "🚀",
-      });
-    } catch (err) {
-      toast.error("Failed to update the item.", {
-        duration: 1000,
-      });
-    }
-  };
-
-  const deleteTodoMutation = async (id: string) => {
-    try {
-      // call API & mutate here
-      await mutate(deleteTodo(id), deleteTodoOptions(id));
-      toast.success("Success! Deleted item.", {
-        duration: 1000,
-      });
-    } catch (err) {
-      toast.error("Failed to delete the item.", {
-        duration: 1000,
-      });
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!newTodo) return;
     addTodoMutation({
@@ -135,18 +149,11 @@ const TodoList = () => {
       return (
         <article key={todo.id}>
           <div className="todo">
-            <label htmlFor="id">{todo.id}</label>
-            <input
-              type="checkbox"
-              checked={todo.completed}
-              id={todo.id}
-              onChange={() =>
-                updateTodoMutation({ ...todo, completed: !todo.completed })
-              }
-            />
+            <label htmlFor="id">{index + 1}</label>
+            <input type="checkbox" />
             <label htmlFor={todo.id}>{todo.title}</label>
           </div>
-          <button className="trash" onClick={() => deleteTodoMutation(todo.id)}>
+          <button className="trash">
             <FontAwesomeIcon icon={faTrash} />
           </button>
         </article>
@@ -154,27 +161,11 @@ const TodoList = () => {
     });
   }
 
-  let pagination;
-  if (todos && todos.length > 0) {
-    pagination = (
-      <div className="pagination">
-        {/* advanced pagination */}
+  const TodosLength = useMemo(() => {
+    return todos?.length;
+  }, [todos]);
 
-        <button
-          onClick={() => handleChangePage(null, currentPage - 1)}
-          disabled={currentPage === 1}
-        >
-          Previous
-        </button>
-        <button
-          onClick={() => handleChangePage(null, currentPage + 1)}
-          disabled={currentPage === Math.ceil(todos.length / PageSize)}
-        >
-          Next
-        </button>
-      </div>
-    );
-  }
+  console.log("TodosLength", TodosLength);
 
   return (
     <main>
@@ -182,7 +173,6 @@ const TodoList = () => {
       <h1>Todo List</h1>
       {newItemSection}
       {content}
-      {pagination}
     </main>
   );
 };

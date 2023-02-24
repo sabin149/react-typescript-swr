@@ -5,7 +5,7 @@ import "./index.css";
 import { preload } from "swr";
 
 import { getTodos, todosUrlEndpoint as cacheKey } from "./api/todosApi";
-const url = `${cacheKey}?_page=1&_limit=10`;
+const url = `${cacheKey}`;
 
 preload(cacheKey, () => getTodos(url));
 
