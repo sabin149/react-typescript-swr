@@ -1,3 +1,4 @@
+import { MutatorOptions } from "swr";
 import {
   addTodo,
   deleteTodo,
